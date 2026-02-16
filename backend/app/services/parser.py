@@ -101,6 +101,8 @@ def parse_decimal_value(value: Any) -> Decimal:
 
 def infer_direction(details: str) -> str:
     lowered = details.strip().lower()
+    if "automatic conversion" in lowered:
+        return "transfer"
     if lowered.startswith("payment"):
         return "expense"
     if lowered.startswith("income"):

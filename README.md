@@ -143,3 +143,42 @@ Optional filters:
 - Re-uploading the same file increases `rows_duplicate` and prevents duplicate inserts.
 - Rows with `Balance` in `Date` are skipped.
 - `/transactions` returns inserted raw rows with parsed fields.
+
+## Step 3: Merchant Categorization and Overrides
+
+New behavior after Step 3:
+
+- Upload now resolves each transaction to a merchant (`merchant_id`).
+- Merchant category defaults are reused by normalized merchant name.
+- New merchants are auto-categorized (`category_source=llm`), with fallback rules if LLM is unavailable.
+- Manual merchant category changes are stored as `category_source=user`.
+
+### APIs
+
+1. List merchants:
+
+```bash
+curl "http://localhost:8000/merchants?limit=100&offset=0"
+```
+
+2. Update merchant category:
+
+```bash
+curl -X PATCH "http://localhost:8000/merchants/1" \
+  -H "Content-Type: application/json" \
+  -d '{"category":"Groceries"}'
+```
+
+3. List categories:
+
+```bash
+curl "http://localhost:8000/categories"
+```
+
+### Frontend
+
+The frontend page now includes:
+
+- XLSX upload form (`POST /upload`)
+- Merchant table loader (`GET /merchants`)
+- Category dropdown per merchant (`PATCH /merchants/{id}`)

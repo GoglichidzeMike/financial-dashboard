@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.transaction import Transaction
 from app.models.upload import Upload
+from app.services.categorizer import resolve_merchants_for_transactions
 from app.services.parser import ParserError, parse_statement_xlsx
 
 
@@ -24,6 +25,8 @@ class UploadSummary:
     rows_invalid: int
     rows_duplicate: int
     rows_inserted: int
+    llm_used_count: int
+    fallback_used_count: int
 
 
 async def import_statement_file(
@@ -42,12 +45,16 @@ async def import_statement_file(
             await db.commit()
             raise UploadValidationError("No valid transaction rows found in the uploaded file")
 
+        merchant_resolution = await resolve_merchants_for_transactions(
+            db, parse_result.transactions
+        )
+
         rows = [
             {
                 "date": tx.date,
                 "posted_date": tx.posted_date,
                 "description_raw": tx.description_raw,
-                "merchant_id": None,
+                "merchant_id": merchant_resolution.merchant_ids[idx],
                 "direction": tx.direction,
                 "amount_original": tx.amount_original,
                 "currency_original": tx.currency_original,
@@ -59,7 +66,7 @@ async def import_statement_file(
                 "upload_id": upload.id,
                 "dedup_key": tx.dedup_key,
             }
-            for tx in parse_result.transactions
+            for idx, tx in enumerate(parse_result.transactions)
         ]
 
         stmt = insert(Transaction).values(rows).on_conflict_do_nothing(
@@ -84,6 +91,8 @@ async def import_statement_file(
             rows_invalid=parse_result.rows_invalid,
             rows_duplicate=duplicates,
             rows_inserted=inserted,
+            llm_used_count=merchant_resolution.llm_used_count,
+            fallback_used_count=merchant_resolution.fallback_used_count,
         )
     except UploadValidationError:
         raise

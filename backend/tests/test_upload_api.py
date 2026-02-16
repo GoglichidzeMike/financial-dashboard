@@ -36,6 +36,8 @@ def test_upload_returns_summary(monkeypatch) -> None:
             rows_invalid=1,
             rows_duplicate=3,
             rows_inserted=4,
+            llm_used_count=2,
+            fallback_used_count=2,
         )
 
     monkeypatch.setattr(
@@ -61,4 +63,6 @@ def test_upload_returns_summary(monkeypatch) -> None:
     assert payload["upload_id"] == 1
     assert payload["rows_inserted"] == 4
     assert payload["rows_duplicate"] == 3
+    assert payload["llm_used_count"] == 2
+    assert payload["fallback_used_count"] == 2
     app.dependency_overrides.clear()

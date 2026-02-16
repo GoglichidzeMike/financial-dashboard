@@ -74,7 +74,7 @@ def test_parse_income_automatic_conversion_row() -> None:
     result = parse_statement_xlsx(data)
     tx = result.transactions[0]
 
-    assert tx.direction == "income"
+    assert tx.direction == "transfer"
     assert tx.currency_original == "USD"
     assert tx.amount_original == Decimal("5.99")
     assert tx.conversion_rate == Decimal("2.748")
@@ -104,6 +104,7 @@ def test_direction_mapping_payment_income_transfer() -> None:
     assert infer_direction("Payment - Amount GEL10.00") == "expense"
     assert infer_direction("Income - Amount USD1.00") == "income"
     assert infer_direction("Incoming Transfer - Amount GEL100.00") == "transfer"
+    assert infer_direction("Income - Amount USD1.00; Automatic conversion, rate: 2.748") == "transfer"
 
 
 def test_dedup_key_stability_same_input_same_hash() -> None:

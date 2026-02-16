@@ -13,7 +13,7 @@ class Merchant(Base):
     raw_name: Mapped[str] = mapped_column(String, nullable=False)
     normalized_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     category: Mapped[str] = mapped_column(String, nullable=False)
-    category_source: Mapped[str] = mapped_column(String, nullable=False)  # 'llm' | 'user'
+    category_source: Mapped[str] = mapped_column(String, nullable=False)  # 'llm' | 'rule' | 'user'
     mcc_code: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

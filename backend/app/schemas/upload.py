@@ -10,3 +10,5 @@ class UploadResponse(BaseModel):
     rows_invalid: int
     rows_duplicate: int
     rows_inserted: int
+    llm_used_count: int
+    fallback_used_count: int

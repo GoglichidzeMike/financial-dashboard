@@ -43,4 +43,6 @@ async def upload_statement(
         rows_invalid=summary.rows_invalid,
         rows_duplicate=summary.rows_duplicate,
         rows_inserted=summary.rows_inserted,
+        llm_used_count=summary.llm_used_count,
+        fallback_used_count=summary.fallback_used_count,
     )
