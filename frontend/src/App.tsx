@@ -1,193 +1,181 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type HealthResponse = {
-  status: string;
+import { api } from "./lib/api";
+import { formatGel } from "./lib/format";
+import {
+  CategoriesResponse,
+  CurrencyBreakdownResponse,
+  DashboardSummaryResponse,
+  DateFilter,
+  LlmCheckResponse,
+  MerchantsResponse,
+  MonthlyTrendResponse,
+  SpendingByCategoryResponse,
+  TopMerchantsResponse,
+  UploadResponse,
+} from "./types/api";
+import { Button } from "./components/ui/Button";
+import { Card } from "./components/ui/Card";
+import { Input } from "./components/ui/Input";
+import { Select } from "./components/ui/Select";
+import { StatusPill } from "./components/shared/StatusPill";
+import { SectionTitle } from "./components/shared/SectionTitle";
+import { SummaryCards } from "./components/dashboard/SummaryCards";
+import { SpendingByCategoryPanel } from "./components/dashboard/SpendingByCategoryPanel";
+import { MonthlyTrendPanel } from "./components/dashboard/MonthlyTrendPanel";
+import { TopMerchantsPanel } from "./components/dashboard/TopMerchantsPanel";
+import { CurrencyBreakdownPanel } from "./components/dashboard/CurrencyBreakdownPanel";
+
+const DEFAULT_FILTERS: DateFilter = {
+  dateFrom: "",
+  dateTo: "",
 };
 
-type UploadResponse = {
-  upload_id: number;
-  filename: string;
-  status: string;
-  rows_total: number;
-  rows_skipped_non_transaction: number;
-  rows_invalid: number;
-  rows_duplicate: number;
-  rows_inserted: number;
-  llm_used_count: number;
-  fallback_used_count: number;
-};
-
-type Merchant = {
-  id: number;
-  raw_name: string;
-  normalized_name: string;
-  category: string;
-  category_source: string;
-  mcc_code: string | null;
-  transaction_count: number;
-  total_spent: string;
-};
-
-type MerchantsResponse = {
-  items: Merchant[];
-};
-
-type CategoriesResponse = {
-  items: string[];
-};
-
-type LlmCheckResponse = {
-  configured: boolean;
-  ok: boolean;
-  model: string;
-  response?: string;
-  error?: string | null;
-};
-
-const apiBase = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-
-export default function App() {
-  const [health, setHealth] = useState<string>("loading");
-  const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string>("");
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [merchants, setMerchants] = useState<Merchant[]>([]);
-  const [merchantsError, setMerchantsError] = useState<string>("");
-  const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
-  const [savingMerchantId, setSavingMerchantId] = useState<number | null>(null);
+function App() {
+  const [health, setHealth] = useState("loading");
   const [llmCheck, setLlmCheck] = useState<LlmCheckResponse | null>(null);
-  const [isCheckingLlm, setIsCheckingLlm] = useState(false);
+  const [checkingLlm, setCheckingLlm] = useState(false);
+
+  const [filters, setFilters] = useState<DateFilter>(DEFAULT_FILTERS);
+  const [dashboardError, setDashboardError] = useState("");
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
+  const [spendingByCategory, setSpendingByCategory] =
+    useState<SpendingByCategoryResponse["items"]>([]);
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendResponse["items"]>([]);
+  const [topMerchants, setTopMerchants] = useState<TopMerchantsResponse["items"]>([]);
+  const [currencyBreakdown, setCurrencyBreakdown] =
+    useState<CurrencyBreakdownResponse["items"]>([]);
+
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
+
+  const [categories, setCategories] = useState<CategoriesResponse["items"]>([]);
+  const [merchants, setMerchants] = useState<MerchantsResponse["items"]>([]);
+  const [merchantsLoading, setMerchantsLoading] = useState(false);
+  const [merchantsError, setMerchantsError] = useState("");
+  const [savingMerchantId, setSavingMerchantId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch(`${apiBase}/health`)
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as HealthResponse;
-        setHealth(data.status);
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : "unknown error";
+    api
+      .getHealth()
+      .then((res) => setHealth(res.status))
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "unknown error";
         setHealth(`error: ${message}`);
       });
   }, []);
 
   useEffect(() => {
-    fetch(`${apiBase}/categories`)
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as CategoriesResponse;
-        setCategories(data.items);
-      })
-      .catch(() => {
-        setCategories([]);
-      });
+    api
+      .listCategories()
+      .then((res) => setCategories(res.items))
+      .catch(() => setCategories([]));
   }, []);
 
-  const loadMerchants = async () => {
-    setIsLoadingMerchants(true);
-    setMerchantsError("");
+  const loadDashboard = async (activeFilters: DateFilter) => {
+    setDashboardLoading(true);
+    setDashboardError("");
     try {
-      const response = await fetch(`${apiBase}/merchants?limit=200&offset=0`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as MerchantsResponse;
-      setMerchants(data.items);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "unknown error";
-      setMerchantsError(message);
+      const [summaryRes, byCategoryRes, trendRes, topRes, currencyRes] =
+        await Promise.all([
+          api.dashboardSummary(activeFilters),
+          api.spendingByCategory(activeFilters),
+          api.monthlyTrend(activeFilters),
+          api.topMerchants(activeFilters),
+          api.currencyBreakdown(activeFilters),
+        ]);
+
+      setSummary(summaryRes);
+      setSpendingByCategory(byCategoryRes.items);
+      setMonthlyTrend(trendRes.items);
+      setTopMerchants(topRes.items);
+      setCurrencyBreakdown(currencyRes.items);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setDashboardError(message);
     } finally {
-      setIsLoadingMerchants(false);
+      setDashboardLoading(false);
     }
   };
 
-  const onCategoryChange = async (merchantId: number, category: string) => {
-    setSavingMerchantId(merchantId);
+  useEffect(() => {
+    void loadDashboard(filters);
+  }, []);
+
+  const loadMerchants = async () => {
+    setMerchantsLoading(true);
     setMerchantsError("");
+    try {
+      const res = await api.listMerchants();
+      setMerchants(res.items);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setMerchantsError(message);
+    } finally {
+      setMerchantsLoading(false);
+    }
+  };
+
+  const onSubmitFilters = async (event: FormEvent) => {
+    event.preventDefault();
+    await loadDashboard(filters);
+  };
+
+  const onUpload = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!uploadFile) {
+      setUploadError("Please select an .xlsx file first.");
+      return;
+    }
+
+    setUploading(true);
+    setUploadError("");
+    setUploadResult(null);
 
     try {
-      const response = await fetch(`${apiBase}/merchants/${merchantId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ category }),
-      });
+      const result = await api.uploadStatement(uploadFile);
+      setUploadResult(result);
+      await Promise.all([loadDashboard(filters), loadMerchants()]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setUploadError(message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
-      if (!response.ok) {
-        const errorBody = (await response.json()) as { detail?: string };
-        throw new Error(errorBody.detail ?? `HTTP ${response.status}`);
-      }
-
+  const onChangeMerchantCategory = async (merchantId: number, category: string) => {
+    setSavingMerchantId(merchantId);
+    setMerchantsError("");
+    try {
+      await api.updateMerchantCategory(merchantId, category);
       setMerchants((prev) =>
-        prev.map((m) =>
-          m.id === merchantId
-            ? { ...m, category, category_source: "user" }
-            : m
+        prev.map((merchant) =>
+          merchant.id === merchantId
+            ? { ...merchant, category, category_source: "user" }
+            : merchant
         )
       );
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "unknown error";
+      await loadDashboard(filters);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
       setMerchantsError(message);
     } finally {
       setSavingMerchantId(null);
     }
   };
 
-  const onUpload = async (event: FormEvent) => {
-    event.preventDefault();
-
-    if (!file) {
-      setUploadError("Please select an .xlsx file first.");
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadError("");
-    setUploadResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch(`${apiBase}/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorBody = (await response.json()) as { detail?: string };
-        throw new Error(errorBody.detail ?? `Upload failed (HTTP ${response.status})`);
-      }
-
-      const data = (await response.json()) as UploadResponse;
-      setUploadResult(data);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "unknown error";
-      setUploadError(message);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const onCheckLlm = async () => {
-    setIsCheckingLlm(true);
+    setCheckingLlm(true);
     setLlmCheck(null);
     try {
-      const response = await fetch(`${apiBase}/llm/check`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as LlmCheckResponse;
-      setLlmCheck(data);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "unknown error";
+      const result = await api.checkLlm();
+      setLlmCheck(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
       setLlmCheck({
         configured: false,
         ok: false,
@@ -195,157 +183,193 @@ export default function App() {
         error: message,
       });
     } finally {
-      setIsCheckingLlm(false);
+      setCheckingLlm(false);
     }
   };
 
+  const llmTone = useMemo(() => {
+    if (!llmCheck) {
+      return "neutral" as const;
+    }
+    return llmCheck.ok ? "ok" : "error";
+  }, [llmCheck]);
+
   return (
-    <main style={{ fontFamily: "sans-serif", margin: "2rem", maxWidth: "760px" }}>
-      <h1>Finance Dashboard Frontend Ready</h1>
-      <p>API health: {health}</p>
-      <p>API base URL: {apiBase}</p>
-      <button type="button" onClick={onCheckLlm} disabled={isCheckingLlm}>
-        {isCheckingLlm ? "Checking LLM..." : "Check LLM"}
-      </button>
-      {llmCheck && (
-        <p style={{ marginTop: "0.5rem" }}>
-          LLM check: {llmCheck.ok ? "OK" : "FAILED"} | configured:{" "}
-          {String(llmCheck.configured)} | model: {llmCheck.model}
-          {llmCheck.error ? ` | error: ${llmCheck.error}` : ""}
-          {llmCheck.response ? ` | response: ${llmCheck.response}` : ""}
-        </p>
-      )}
-
-      <hr style={{ margin: "1.5rem 0" }} />
-
-      <section>
-        <h2>Upload Statement</h2>
-        <form onSubmit={onUpload}>
-          <input
-            type="file"
-            accept=".xlsx"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setUploadError("");
-              setUploadResult(null);
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!file || isUploading}
-            style={{ marginLeft: "0.75rem" }}
-          >
-            {isUploading ? "Uploading..." : "Upload"}
-          </button>
-        </form>
-        <p style={{ marginTop: "0.5rem", color: "#555" }}>
-          Only .xlsx files are supported.
-        </p>
-
-        {uploadError && (
-          <p style={{ color: "crimson", marginTop: "1rem" }}>
-            Upload error: {uploadError}
+    <main className="mx-auto max-w-7xl space-y-6 px-6 py-8">
+      <Card className="border border-cyan-100 bg-gradient-to-r from-white to-cyan-50">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Health: <span className="font-semibold">{health}</span> | API: {api.baseUrl}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={onCheckLlm} disabled={checkingLlm}>
+              {checkingLlm ? "Checking LLM..." : "Check LLM"}
+            </Button>
+            {llmCheck && (
+              <StatusPill
+                tone={llmTone}
+                label={llmCheck.ok ? "LLM Ready" : "LLM Unavailable"}
+              />
+            )}
+          </div>
+        </div>
+        {llmCheck && (
+          <p className="mt-3 text-xs text-slate-500">
+            Model: {llmCheck.model}
+            {llmCheck.error ? ` | Error: ${llmCheck.error}` : ""}
+            {llmCheck.response ? ` | Response: ${llmCheck.response}` : ""}
           </p>
         )}
+      </Card>
 
-        {uploadResult && (
-          <div style={{ marginTop: "1rem" }}>
-            <h3>Upload Result</h3>
-            <ul>
-              <li>upload_id: {uploadResult.upload_id}</li>
-              <li>filename: {uploadResult.filename}</li>
-              <li>status: {uploadResult.status}</li>
-              <li>rows_total: {uploadResult.rows_total}</li>
-              <li>
-                rows_skipped_non_transaction:{" "}
-                {uploadResult.rows_skipped_non_transaction}
-              </li>
-              <li>rows_invalid: {uploadResult.rows_invalid}</li>
-              <li>rows_duplicate: {uploadResult.rows_duplicate}</li>
-              <li>rows_inserted: {uploadResult.rows_inserted}</li>
-              <li>llm_used_count: {uploadResult.llm_used_count}</li>
-              <li>fallback_used_count: {uploadResult.fallback_used_count}</li>
-            </ul>
-          </div>
-        )}
+      <section>
+        <SectionTitle title="Dashboard" subtitle="Spending analytics and trends in GEL" />
+
+        <Card className="mb-4">
+          <form className="flex flex-wrap items-end gap-3" onSubmit={onSubmitFilters}>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Date From
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value }))}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Date To
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </label>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={dashboardLoading}>
+                {dashboardLoading ? "Refreshing..." : "Apply Filters"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setFilters(DEFAULT_FILTERS);
+                  void loadDashboard(DEFAULT_FILTERS);
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+          </form>
+          {dashboardError && (
+            <p className="mt-3 text-sm font-medium text-rose-600">Dashboard error: {dashboardError}</p>
+          )}
+        </Card>
+
+        <SummaryCards summary={summary} loading={dashboardLoading} />
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <SpendingByCategoryPanel items={spendingByCategory} loading={dashboardLoading} />
+          <MonthlyTrendPanel items={monthlyTrend} loading={dashboardLoading} />
+          <TopMerchantsPanel items={topMerchants} loading={dashboardLoading} />
+          <CurrencyBreakdownPanel items={currencyBreakdown} loading={dashboardLoading} />
+        </div>
       </section>
 
-      <hr style={{ margin: "1.5rem 0" }} />
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Card title="Upload Statement" subtitle="Import .xlsx bank exports">
+          <form className="flex flex-wrap items-center gap-3" onSubmit={onUpload}>
+            <Input
+              type="file"
+              accept=".xlsx"
+              className="h-auto"
+              onChange={(e) => {
+                setUploadFile(e.target.files?.[0] ?? null);
+                setUploadError("");
+                setUploadResult(null);
+              }}
+            />
+            <Button type="submit" disabled={!uploadFile || uploading}>
+              {uploading ? "Uploading..." : "Upload"}
+            </Button>
+          </form>
+          {uploadError && <p className="mt-3 text-sm text-rose-600">Upload error: {uploadError}</p>}
+          {uploadResult && (
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+              <span>Status: {uploadResult.status}</span>
+              <span>Inserted: {uploadResult.rows_inserted}</span>
+              <span>Duplicates: {uploadResult.rows_duplicate}</span>
+              <span>Invalid: {uploadResult.rows_invalid}</span>
+              <span>LLM used: {uploadResult.llm_used_count}</span>
+              <span>Fallback used: {uploadResult.fallback_used_count}</span>
+            </div>
+          )}
+        </Card>
 
-      <section>
-        <h2>Merchants</h2>
-        <button type="button" onClick={loadMerchants} disabled={isLoadingMerchants}>
-          {isLoadingMerchants ? "Loading..." : "Load Merchants"}
-        </button>
-
-        {merchantsError && (
-          <p style={{ color: "crimson", marginTop: "1rem" }}>
-            Merchants error: {merchantsError}
-          </p>
-        )}
-
-        {merchants.length > 0 && (
-          <div style={{ marginTop: "1rem", overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", minWidth: "700px" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", padding: "0.4rem" }}>Merchant</th>
-                  <th style={{ textAlign: "left", padding: "0.4rem" }}>Category</th>
-                  <th style={{ textAlign: "right", padding: "0.4rem" }}>Tx Count</th>
-                  <th style={{ textAlign: "right", padding: "0.4rem" }}>
-                    Total Spent (GEL)
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {merchants.map((merchant) => (
-                  <tr key={merchant.id}>
-                    <td style={{ padding: "0.4rem", borderTop: "1px solid #ddd" }}>
-                      {merchant.raw_name}
-                    </td>
-                    <td style={{ padding: "0.4rem", borderTop: "1px solid #ddd" }}>
-                      <select
-                        value={merchant.category}
-                        disabled={savingMerchantId === merchant.id || categories.length === 0}
-                        onChange={(e) =>
-                          onCategoryChange(merchant.id, e.target.value)
-                        }
-                      >
-                        {categories.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
-                      <span style={{ marginLeft: "0.5rem", color: "#666" }}>
-                        ({merchant.category_source})
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem",
-                        borderTop: "1px solid #ddd",
-                        textAlign: "right",
-                      }}
-                    >
-                      {merchant.transaction_count}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem",
-                        borderTop: "1px solid #ddd",
-                        textAlign: "right",
-                      }}
-                    >
-                      {merchant.total_spent}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <Card
+          title="Merchants"
+          subtitle="Review and override categories. Changes affect dashboard buckets immediately."
+        >
+          <div className="mb-3 flex justify-between">
+            <Button variant="secondary" onClick={loadMerchants} disabled={merchantsLoading}>
+              {merchantsLoading ? "Loading..." : "Load Merchants"}
+            </Button>
+            <span className="text-xs text-slate-500">Count: {merchants.length}</span>
           </div>
-        )}
+          {merchantsError && (
+            <p className="mb-3 text-sm font-medium text-rose-600">Merchants error: {merchantsError}</p>
+          )}
+          {merchants.length > 0 && (
+            <div className="max-h-[360px] overflow-auto rounded-lg border border-slate-100">
+              <table className="min-w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Merchant</th>
+                    <th className="px-3 py-2">Category</th>
+                    <th className="px-3 py-2 text-right">Tx</th>
+                    <th className="px-3 py-2 text-right">Spent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {merchants.map((merchant) => (
+                    <tr key={merchant.id} className="odd:bg-white even:bg-slate-50/40">
+                      <td className="px-3 py-2 text-slate-700">{merchant.normalized_name}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={merchant.category}
+                            disabled={savingMerchantId === merchant.id || categories.length === 0}
+                            onChange={(e) =>
+                              void onChangeMerchantCategory(merchant.id, e.target.value)
+                            }
+                          >
+                            {categories.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </Select>
+                          <StatusPill
+                            tone={merchant.category_source === "llm" ? "ok" : "neutral"}
+                            label={merchant.category_source}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-600">{merchant.transaction_count}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-700">
+                        {formatGel(Number(merchant.total_spent))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </section>
     </main>
   );
 }
+
+export default App;

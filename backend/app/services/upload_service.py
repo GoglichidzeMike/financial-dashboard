@@ -29,6 +29,13 @@ class UploadSummary:
     fallback_used_count: int
 
 
+INSERT_CHUNK_SIZE = 500
+
+
+def _chunked_rows(rows: list[dict], chunk_size: int) -> list[list[dict]]:
+    return [rows[idx : idx + chunk_size] for idx in range(0, len(rows), chunk_size)]
+
+
 async def import_statement_file(
     db: AsyncSession, filename: str, file_bytes: bytes
 ) -> UploadSummary:
@@ -69,12 +76,14 @@ async def import_statement_file(
             for idx, tx in enumerate(parse_result.transactions)
         ]
 
-        stmt = insert(Transaction).values(rows).on_conflict_do_nothing(
-            index_elements=["dedup_key"]
-        )
-        result = await db.execute(stmt)
+        inserted = 0
+        for batch in _chunked_rows(rows, INSERT_CHUNK_SIZE):
+            stmt = insert(Transaction).values(batch).on_conflict_do_nothing(
+                index_elements=["dedup_key"]
+            )
+            result = await db.execute(stmt)
+            inserted += result.rowcount or 0
 
-        inserted = result.rowcount or 0
         valid_rows = len(parse_result.transactions)
         duplicates = max(valid_rows - inserted, 0)
 

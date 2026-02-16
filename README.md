@@ -182,3 +182,23 @@ The frontend page now includes:
 - XLSX upload form (`POST /upload`)
 - Merchant table loader (`GET /merchants`)
 - Category dropdown per merchant (`PATCH /merchants/{id}`)
+
+## Step 5: Dashboard APIs and UI
+
+Dashboard endpoints (all support optional `date_from` and `date_to` in `YYYY-MM-DD`):
+
+- `GET /dashboard/summary`
+- `GET /dashboard/spending-by-category`
+- `GET /dashboard/monthly-trend`
+- `GET /dashboard/top-merchants?limit=10`
+- `GET /dashboard/currency-breakdown`
+
+Frontend updates:
+
+- Tailwind-based dashboard with date filters
+- KPI cards (spend, income, net cash flow, expense tx count)
+- Spending by category panel
+- Monthly trend panel
+- Top merchants panel
+- Currency breakdown panel
+- Reusable UI components for buttons, inputs, selects, cards
