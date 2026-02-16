@@ -11,3 +11,4 @@ openai>=1.50.0
 pandas>=2.2.0
 openpyxl>=3.1.0
 python-multipart>=0.0.12
+pytest>=8.0.0

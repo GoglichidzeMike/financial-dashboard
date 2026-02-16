@@ -93,3 +93,53 @@ Expected indexes:
   - run `alembic upgrade head` first.
 - Missing environment variables:
   - verify `.env` at project root includes `POSTGRES_*` values and `OPENAI_API_KEY`.
+
+## Step 2: Upload and Parse
+
+1. Run latest migrations (adds transaction dedup key and indexes):
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+2. Upload an XLSX statement:
+
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "file=@/absolute/path/to/statement.xlsx"
+```
+
+Expected response shape:
+
+```json
+{
+  "upload_id": 1,
+  "filename": "statement.xlsx",
+  "status": "done",
+  "rows_total": 100,
+  "rows_skipped_non_transaction": 8,
+  "rows_invalid": 1,
+  "rows_duplicate": 20,
+  "rows_inserted": 71
+}
+```
+
+3. Query imported transactions:
+
+```bash
+curl "http://localhost:8000/transactions?limit=20&offset=0"
+```
+
+Optional filters:
+
+- `upload_id`
+- `date_from` (`YYYY-MM-DD`)
+- `date_to` (`YYYY-MM-DD`)
+
+### Step 2 Validation Checklist
+
+- Uploading non-`.xlsx` returns `400`.
+- Uploading an XLSX with no valid transaction rows returns `400`.
+- Re-uploading the same file increases `rows_duplicate` and prevents duplicate inserts.
+- Rows with `Balance` in `Date` are skipped.
+- `/transactions` returns inserted raw rows with parsed fields.

@@ -32,6 +32,7 @@ class Transaction(Base):
     conversion_rate: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
     card_last4: Mapped[str | None] = mapped_column(String, nullable=True)
     mcc_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    dedup_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     embedding = mapped_column(Vector(1536), nullable=True)
     upload_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("uploads.id"), nullable=True
