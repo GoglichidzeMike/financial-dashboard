@@ -70,6 +70,20 @@ export type SpendingByCategoryResponse = {
   items: SpendingByCategoryItem[];
 };
 
+export type CategoryMerchantBreakdownItem = {
+  merchant_id: number | null;
+  merchant_name: string;
+  amount_gel: number;
+  transaction_count: number;
+};
+
+export type CategoryMerchantBreakdownResponse = {
+  category: string;
+  total_amount_gel: number;
+  total_transactions: number;
+  items: CategoryMerchantBreakdownItem[];
+};
+
 export type MonthlyTrendItem = {
   month: string;
   amount_gel: number;
@@ -103,6 +117,62 @@ export type CurrencyBreakdownResponse = {
 export type DateFilter = {
   dateFrom: string;
   dateTo: string;
+};
+
+export type TransactionSortBy =
+  | "date"
+  | "amount_gel"
+  | "amount_original"
+  | "merchant"
+  | "category"
+  | "direction";
+
+export type TransactionSortOrder = "asc" | "desc";
+
+export type TransactionListItem = {
+  id: number;
+  date: string;
+  posted_date: string | null;
+  description_raw: string;
+  direction: "expense" | "income" | "transfer";
+  amount_original: string;
+  currency_original: string;
+  amount_gel: string;
+  conversion_rate: string | null;
+  card_last4: string | null;
+  mcc_code: string | null;
+  upload_id: number | null;
+  merchant_name: string | null;
+  category: string | null;
+};
+
+export type TransactionListMeta = {
+  total: number;
+  limit: number;
+  offset: number;
+  has_next: boolean;
+};
+
+export type TransactionListResponse = {
+  items: TransactionListItem[];
+  meta: TransactionListMeta;
+};
+
+export type TransactionQueryParams = {
+  limit?: number;
+  offset?: number;
+  upload_id?: number;
+  date_from?: string;
+  date_to?: string;
+  direction?: "expense" | "income" | "transfer";
+  category?: string;
+  categories?: string[];
+  merchant?: string;
+  currency_original?: string;
+  amount_gel_min?: number;
+  amount_gel_max?: number;
+  sort_by?: TransactionSortBy;
+  sort_order?: TransactionSortOrder;
 };
 
 export type ChatSource = {

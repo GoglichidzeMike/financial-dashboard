@@ -8,6 +8,8 @@ from app.db import get_db
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
 from app.schemas.dashboard import (
+    CategoryMerchantBreakdownItem,
+    CategoryMerchantBreakdownResponse,
     CurrencyBreakdownItem,
     CurrencyBreakdownResponse,
     DashboardSummaryResponse,
@@ -124,6 +126,65 @@ async def monthly_trend(
             MonthlyTrendItem(month=row.month, amount_gel=float(row.amount_gel or 0))
             for row in rows
         ]
+    )
+
+
+@router.get("/category-merchants", response_model=CategoryMerchantBreakdownResponse)
+async def category_merchants(
+    category: str = Query(..., min_length=1),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+) -> CategoryMerchantBreakdownResponse:
+    merchant_name_expr = func.coalesce(Merchant.normalized_name, "Unknown")
+
+    totals_stmt = (
+        select(
+            func.coalesce(func.sum(Transaction.amount_gel), 0).label("total_amount_gel"),
+            func.count(Transaction.id).label("total_transactions"),
+        )
+        .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
+        .where(
+            Transaction.direction == "expense",
+            func.coalesce(Merchant.category, "Other") == category,
+        )
+    )
+    totals_stmt = _apply_date_filter(totals_stmt, date_from, date_to)
+    totals_row = (await db.execute(totals_stmt)).one()
+
+    items_stmt = (
+        select(
+            Merchant.id.label("merchant_id"),
+            merchant_name_expr.label("merchant_name"),
+            func.coalesce(func.sum(Transaction.amount_gel), 0).label("amount_gel"),
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
+        .where(
+            Transaction.direction == "expense",
+            func.coalesce(Merchant.category, "Other") == category,
+        )
+        .group_by(Merchant.id, merchant_name_expr)
+        .order_by(func.sum(Transaction.amount_gel).desc())
+        .limit(limit)
+    )
+    items_stmt = _apply_date_filter(items_stmt, date_from, date_to)
+    rows = (await db.execute(items_stmt)).all()
+
+    return CategoryMerchantBreakdownResponse(
+        category=category,
+        total_amount_gel=float(totals_row.total_amount_gel or 0),
+        total_transactions=int(totals_row.total_transactions or 0),
+        items=[
+            CategoryMerchantBreakdownItem(
+                merchant_id=row.merchant_id,
+                merchant_name=row.merchant_name,
+                amount_gel=float(row.amount_gel or 0),
+                transaction_count=int(row.transaction_count or 0),
+            )
+            for row in rows
+        ],
     )
 
 

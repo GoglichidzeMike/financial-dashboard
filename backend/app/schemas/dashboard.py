@@ -18,6 +18,20 @@ class SpendingByCategoryResponse(BaseModel):
     items: list[SpendingByCategoryItem]
 
 
+class CategoryMerchantBreakdownItem(BaseModel):
+    merchant_id: int | None
+    merchant_name: str
+    amount_gel: float
+    transaction_count: int
+
+
+class CategoryMerchantBreakdownResponse(BaseModel):
+    category: str
+    total_amount_gel: float
+    total_transactions: int
+    items: list[CategoryMerchantBreakdownItem]
+
+
 class MonthlyTrendItem(BaseModel):
     month: str
     amount_gel: float

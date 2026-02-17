@@ -1,6 +1,9 @@
 import {
+  CategoryMerchantBreakdownResponse,
   ChatRequest,
   ChatResponse,
+  TransactionListResponse,
+  TransactionQueryParams,
   UploadAcceptedResponse,
   UploadStatusResponse,
   CategoriesResponse,
@@ -71,14 +74,44 @@ export const api = {
     fetchJson<DashboardSummaryResponse>(`/dashboard/summary${filterQuery(filters)}`),
   spendingByCategory: (filters: DateFilter) =>
     fetchJson<SpendingByCategoryResponse>(`/dashboard/spending-by-category${filterQuery(filters)}`),
+  categoryMerchants: (
+    category: string,
+    filters: DateFilter,
+    limit = 20
+  ) =>
+    fetchJson<CategoryMerchantBreakdownResponse>(
+      `/dashboard/category-merchants${buildQuery({
+        ...filterParams(filters),
+        category,
+        limit: String(limit),
+      })}`
+    ),
   monthlyTrend: (filters: DateFilter) =>
     fetchJson<MonthlyTrendResponse>(`/dashboard/monthly-trend${filterQuery(filters)}`),
-  topMerchants: (filters: DateFilter) =>
+  topMerchants: (filters: DateFilter, limit = 10) =>
     fetchJson<TopMerchantsResponse>(
-      `/dashboard/top-merchants${buildQuery({ ...filterParams(filters), limit: "10" })}`
+      `/dashboard/top-merchants${buildQuery({
+        ...filterParams(filters),
+        limit: String(limit),
+      })}`
     ),
   currencyBreakdown: (filters: DateFilter) =>
     fetchJson<CurrencyBreakdownResponse>(`/dashboard/currency-breakdown${filterQuery(filters)}`),
+  listTransactions: (params: TransactionQueryParams) =>
+    fetchJson<TransactionListResponse>(
+      `/transactions${buildQuery(
+        Object.fromEntries(
+          Object.entries(params).map(([key, value]) => [
+            key,
+            value == null
+              ? undefined
+              : Array.isArray(value)
+                ? value.join(",")
+                : String(value),
+          ])
+        )
+      )}`
+    ),
   chat: (payload: ChatRequest) =>
     fetchJson<ChatResponse>("/chat", {
       method: "POST",
