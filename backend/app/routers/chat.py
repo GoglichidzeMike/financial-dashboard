@@ -16,4 +16,5 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)) -> Chat
         date_from=payload.date_from,
         date_to=payload.date_to,
         top_k=payload.top_k,
+        history=payload.history,
     )

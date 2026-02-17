@@ -109,6 +109,8 @@ export type ChatSource = {
   source_type: string;
   title: string;
   content: string;
+  table_columns?: string[] | null;
+  table_rows?: string[][] | null;
 };
 
 export type ChatRequest = {
@@ -116,6 +118,12 @@ export type ChatRequest = {
   date_from?: string;
   date_to?: string;
   top_k?: number;
+  history?: ChatHistoryTurn[];
+};
+
+export type ChatHistoryTurn = {
+  question: string;
+  answer: string;
 };
 
 export type ChatResponse = {

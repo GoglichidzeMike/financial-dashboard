@@ -3,7 +3,6 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "./lib/api";
 import { formatGel } from "./lib/format";
 import {
-  ChatResponse,
   UploadAcceptedResponse,
   UploadStatusResponse,
   CategoriesResponse,
@@ -27,11 +26,35 @@ import { SpendingByCategoryPanel } from "./components/dashboard/SpendingByCatego
 import { MonthlyTrendPanel } from "./components/dashboard/MonthlyTrendPanel";
 import { TopMerchantsPanel } from "./components/dashboard/TopMerchantsPanel";
 import { CurrencyBreakdownPanel } from "./components/dashboard/CurrencyBreakdownPanel";
+import { ChatDrawer, ChatHistoryItem } from "./components/chat/ChatDrawer";
 
 const DEFAULT_FILTERS: DateFilter = {
   dateFrom: "",
   dateTo: "",
 };
+
+const CHAT_SESSIONS_STORAGE_KEY = "finance_dashboard_chat_sessions";
+const CHAT_ACTIVE_SESSION_STORAGE_KEY = "finance_dashboard_active_chat_session";
+
+type ChatSession = {
+  id: string;
+  title: string;
+  items: ChatHistoryItem[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+function createNewSession(): ChatSession {
+  const id = `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const now = new Date().toISOString();
+  return {
+    id,
+    title: "New Chat",
+    items: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 function App() {
   const [health, setHealth] = useState("loading");
@@ -64,8 +87,10 @@ function App() {
   const [chatQuestion, setChatQuestion] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState("");
-  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [chatUseDashboardFilters, setChatUseDashboardFilters] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([createNewSession()]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string>("");
 
   useEffect(() => {
     api
@@ -83,6 +108,41 @@ function App() {
       .then((res) => setCategories(res.items))
       .catch(() => setCategories([]));
   }, []);
+
+  useEffect(() => {
+    try {
+      const rawSessions = window.localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY);
+      const rawActive = window.localStorage.getItem(CHAT_ACTIVE_SESSION_STORAGE_KEY);
+      if (rawSessions) {
+        const parsed = JSON.parse(rawSessions) as ChatSession[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatSessions(parsed);
+          if (rawActive && parsed.some((session) => session.id === rawActive)) {
+            setActiveChatSessionId(rawActive);
+          } else {
+            setActiveChatSessionId(parsed[0].id);
+          }
+          return;
+        }
+      }
+    } catch {
+      // no-op; fallback below
+    }
+    const first = createNewSession();
+    setChatSessions([first]);
+    setActiveChatSessionId(first.id);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(chatSessions));
+  }, [chatSessions]);
+
+  useEffect(() => {
+    if (!activeChatSessionId) {
+      return;
+    }
+    window.localStorage.setItem(CHAT_ACTIVE_SESSION_STORAGE_KEY, activeChatSessionId);
+  }, [activeChatSessionId]);
 
   const loadDashboard = async (activeFilters: DateFilter) => {
     setDashboardLoading(true);
@@ -216,15 +276,50 @@ function App() {
 
     setChatLoading(true);
     setChatError("");
-    setChatResponse(null);
     try {
+      const activeSession = chatSessions.find((session) => session.id === activeChatSessionId);
+      const historyForApi = (activeSession?.items ?? [])
+        .slice(0, 10)
+        .reverse()
+        .map((item) => ({
+          question: item.question,
+          answer: item.response.answer,
+        }));
       const response = await api.chat({
         question,
         date_from: chatUseDashboardFilters ? filters.dateFrom || undefined : undefined,
         date_to: chatUseDashboardFilters ? filters.dateTo || undefined : undefined,
         top_k: 20,
+        history: historyForApi,
       });
-      setChatResponse(response);
+      setChatSessions((prev) =>
+        prev.map((session) => {
+          if (session.id !== activeChatSessionId) {
+            return session;
+          }
+          const createdAt = new Date().toLocaleString();
+          const nextItems = [
+            {
+              id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              question,
+              response,
+              createdAt,
+            },
+            ...session.items,
+          ].slice(0, 80);
+          const nextTitle =
+            session.items.length === 0
+              ? question.slice(0, 42) + (question.length > 42 ? "..." : "")
+              : session.title;
+          return {
+            ...session,
+            title: nextTitle || "Chat",
+            items: nextItems,
+            updatedAt: new Date().toISOString(),
+          };
+        })
+      );
+      setChatQuestion("");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "unknown error";
       setChatError(message);
@@ -240,7 +335,39 @@ function App() {
     return llmCheck.ok ? "ok" : "error";
   }, [llmCheck]);
 
+  const onClearChatHistory = () => {
+    setChatSessions((prev) =>
+      prev.map((session) =>
+        session.id === activeChatSessionId
+          ? { ...session, items: [], title: "New Chat", updatedAt: new Date().toISOString() }
+          : session
+      )
+    );
+    setChatError("");
+  };
+
+  const onCreateChatSession = () => {
+    const session = createNewSession();
+    setChatSessions((prev) => [session, ...prev]);
+    setActiveChatSessionId(session.id);
+    setChatQuestion("");
+    setChatError("");
+  };
+
+  const activeChatSession =
+    chatSessions.find((session) => session.id === activeChatSessionId) ?? chatSessions[0];
+  const chatHistory = activeChatSession?.items ?? [];
+  const chatSessionsMeta = chatSessions
+    .map((session) => ({
+      id: session.id,
+      title: session.title,
+      updatedAt: session.updatedAt,
+      messageCount: session.items.length,
+    }))
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+
   return (
+    <>
     <main className="mx-auto max-w-7xl space-y-6 px-6 py-8">
       <Card className="border border-cyan-100 bg-gradient-to-r from-white to-cyan-50">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -453,65 +580,25 @@ function App() {
         </Card>
       </section>
 
-      <section>
-        <Card
-          title="Chat Q&A"
-          subtitle="Ask questions about your finances. Uses SQL and semantic retrieval."
-        >
-          <form className="flex flex-wrap items-center gap-3" onSubmit={onAskChat}>
-            <Input
-              type="text"
-              placeholder="Example: What were my top merchants this month?"
-              className="min-w-[320px] flex-1"
-              value={chatQuestion}
-              onChange={(e) => setChatQuestion(e.target.value)}
-            />
-            <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-              <input
-                type="checkbox"
-                checked={chatUseDashboardFilters}
-                onChange={(e) => setChatUseDashboardFilters(e.target.checked)}
-              />
-              Use dashboard date filters
-            </label>
-            <Button type="submit" disabled={chatLoading || !chatQuestion.trim()}>
-              {chatLoading ? "Thinking..." : "Ask"}
-            </Button>
-          </form>
-          {chatError && <p className="mt-3 text-sm text-rose-600">Chat error: {chatError}</p>}
-          {chatResponse && (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <StatusPill label={`mode: ${chatResponse.mode}`} tone="neutral" />
-              </div>
-              <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                {chatResponse.answer}
-              </p>
-              {chatResponse.sources.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Sources
-                  </p>
-                  {chatResponse.sources.map((source, index) => (
-                    <div
-                      key={`${source.title}-${index}`}
-                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <p className="mb-1 text-xs font-semibold text-slate-600">
-                        {source.title} ({source.source_type})
-                      </p>
-                      <p className="whitespace-pre-wrap text-xs leading-5 text-slate-700">
-                        {source.content}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
-      </section>
     </main>
+    <ChatDrawer
+      isOpen={chatOpen}
+      question={chatQuestion}
+      loading={chatLoading}
+      error={chatError}
+      useDashboardFilters={chatUseDashboardFilters}
+      history={chatHistory}
+      sessions={chatSessionsMeta}
+      activeSessionId={activeChatSession?.id ?? ""}
+      onToggle={() => setChatOpen((prev) => !prev)}
+      onQuestionChange={setChatQuestion}
+      onToggleFilters={setChatUseDashboardFilters}
+      onSubmit={onAskChat}
+      onClearHistory={onClearChatHistory}
+      onCreateSession={onCreateChatSession}
+      onSelectSession={setActiveChatSessionId}
+    />
+    </>
   );
 }
 
