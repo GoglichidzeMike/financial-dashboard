@@ -10,7 +10,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-REQUIRED_HEADERS = ("date", "details", "gel", "usd", "eur", "gbp")
+REQUIRED_BASE_HEADERS = ("date", "details")
 CURRENCY_HEADERS = ("gel", "usd", "eur", "gbp")
 
 _AMOUNT_RE = re.compile(
@@ -58,6 +58,26 @@ def _normalize_header(value: Any) -> str:
         return ""
     text = str(value).replace('"', " ").replace("\n", " ").strip().lower()
     return re.sub(r"\s+", " ", text)
+
+
+def _map_header_cell(cell: str) -> str | None:
+    token = cell.strip().lower()
+    if not token:
+        return None
+
+    if token == "date" or " date" in token or token.startswith("date "):
+        return "date"
+    if token == "details" or "detail" in token:
+        return "details"
+    if "gel" in token:
+        return "gel"
+    if "usd" in token:
+        return "usd"
+    if "eur" in token:
+        return "eur"
+    if "gbp" in token:
+        return "gbp"
+    return None
 
 
 
@@ -152,24 +172,23 @@ def _parse_conversion_rate(details: str) -> Decimal | None:
 
 
 def _find_header_row(ws: Any) -> tuple[int, dict[str, int]]:
-    max_scan_rows = min(ws.max_row, 40)
+    max_scan_rows = min(ws.max_row, 150)
     for row_idx in range(1, max_scan_rows + 1):
         row = [ws.cell(row=row_idx, column=col_idx).value for col_idx in range(1, ws.max_column + 1)]
         normalized = [_normalize_header(cell) for cell in row]
 
         header_map: dict[str, int] = {}
         for col_idx, cell in enumerate(normalized):
-            if cell == "date":
-                header_map["date"] = col_idx
-            elif cell == "details":
-                header_map["details"] = col_idx
-            elif cell in CURRENCY_HEADERS:
-                header_map[cell] = col_idx
+            mapped = _map_header_cell(cell)
+            if mapped and mapped not in header_map:
+                header_map[mapped] = col_idx
 
-        if all(key in header_map for key in REQUIRED_HEADERS):
+        has_required = all(key in header_map for key in REQUIRED_BASE_HEADERS)
+        has_any_currency = any(currency in header_map for currency in CURRENCY_HEADERS)
+        if has_required and has_any_currency:
             return row_idx, header_map
 
-    raise ParserError("Could not find required headers: Date, Details, GEL, USD, EUR, GBP")
+    raise ParserError("Could not find required statement headers (need Date, Details, and at least one currency column)")
 
 
 

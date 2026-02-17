@@ -17,10 +17,11 @@ from app.schemas.merchant import (
     MerchantUpdateResponse,
 )
 from app.schemas.transaction import TransactionListItem, TransactionListResponse
-from app.schemas.upload import UploadResponse
+from app.schemas.upload import UploadAcceptedResponse, UploadStatusResponse
 
 __all__ = [
-    "UploadResponse",
+    "UploadAcceptedResponse",
+    "UploadStatusResponse",
     "TransactionListItem",
     "TransactionListResponse",
     "MerchantListItem",

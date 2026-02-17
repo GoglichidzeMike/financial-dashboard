@@ -1,4 +1,6 @@
 import {
+  UploadAcceptedResponse,
+  UploadStatusResponse,
   CategoriesResponse,
   CurrencyBreakdownResponse,
   DashboardSummaryResponse,
@@ -9,7 +11,6 @@ import {
   MonthlyTrendResponse,
   SpendingByCategoryResponse,
   TopMerchantsResponse,
-  UploadResponse,
 } from "../types/api";
 
 const apiBase = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -54,11 +55,16 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category }),
     }),
-  uploadStatement: async (file: File) => {
+  uploadStatement: async (file: File, generateEmbeddings = true) => {
     const formData = new FormData();
     formData.append("file", file);
-    return fetchJson<UploadResponse>("/upload", { method: "POST", body: formData });
+    return fetchJson<UploadAcceptedResponse>(
+      `/upload${buildQuery({ generate_embeddings: String(generateEmbeddings) })}`,
+      { method: "POST", body: formData }
+    );
   },
+  getUploadStatus: (uploadId: number) =>
+    fetchJson<UploadStatusResponse>(`/upload/${uploadId}`),
   dashboardSummary: (filters: DateFilter) =>
     fetchJson<DashboardSummaryResponse>(`/dashboard/summary${filterQuery(filters)}`),
   spendingByCategory: (filters: DateFilter) =>

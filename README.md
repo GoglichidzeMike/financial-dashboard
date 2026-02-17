@@ -102,29 +102,44 @@ Expected indexes:
 docker compose exec api alembic upgrade head
 ```
 
-2. Upload an XLSX statement:
+2. Upload an XLSX statement (async background job):
 
 ```bash
 curl -X POST http://localhost:8000/upload \
   -F "file=@/absolute/path/to/statement.xlsx"
 ```
 
-Expected response shape:
+Expected immediate response (`202 Accepted`):
 
 ```json
 {
   "upload_id": 1,
   "filename": "statement.xlsx",
-  "status": "done",
-  "rows_total": 100,
-  "rows_skipped_non_transaction": 8,
-  "rows_invalid": 1,
-  "rows_duplicate": 20,
-  "rows_inserted": 71
+  "status": "processing"
 }
 ```
 
-3. Query imported transactions:
+3. Poll upload job status:
+
+```bash
+curl "http://localhost:8000/upload/1"
+```
+
+Final status response includes:
+- `processing_phase`
+- `progress_percent`
+- `rows_processed`
+- `rows_total`
+- `rows_skipped_non_transaction`
+- `rows_invalid`
+- `rows_duplicate`
+- `rows_inserted`
+- `llm_used_count`
+- `fallback_used_count`
+- `embeddings_generated`
+- `error_message`
+
+4. Query imported transactions:
 
 ```bash
 curl "http://localhost:8000/transactions?limit=20&offset=0"
@@ -139,10 +154,11 @@ Optional filters:
 ### Step 2 Validation Checklist
 
 - Uploading non-`.xlsx` returns `400`.
-- Uploading an XLSX with no valid transaction rows returns `400`.
+- Uploading an XLSX with no valid transaction rows ends with upload `status=error`.
 - Re-uploading the same file increases `rows_duplicate` and prevents duplicate inserts.
 - Rows with `Balance` in `Date` are skipped.
 - `/transactions` returns inserted raw rows with parsed fields.
+- Large files are handled in background; request returns quickly with `upload_id`.
 
 ## Step 3: Merchant Categorization and Overrides
 

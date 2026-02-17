@@ -3,6 +3,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "./lib/api";
 import { formatGel } from "./lib/format";
 import {
+  UploadAcceptedResponse,
+  UploadStatusResponse,
   CategoriesResponse,
   CurrencyBreakdownResponse,
   DashboardSummaryResponse,
@@ -12,7 +14,6 @@ import {
   MonthlyTrendResponse,
   SpendingByCategoryResponse,
   TopMerchantsResponse,
-  UploadResponse,
 } from "./types/api";
 import { Button } from "./components/ui/Button";
 import { Card } from "./components/ui/Card";
@@ -50,7 +51,9 @@ function App() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
+  const [uploadAccepted, setUploadAccepted] = useState<UploadAcceptedResponse | null>(null);
+  const [uploadResult, setUploadResult] = useState<UploadStatusResponse | null>(null);
+  const [generateEmbeddings, setGenerateEmbeddings] = useState(true);
 
   const [categories, setCategories] = useState<CategoriesResponse["items"]>([]);
   const [merchants, setMerchants] = useState<MerchantsResponse["items"]>([]);
@@ -136,8 +139,19 @@ function App() {
     setUploadResult(null);
 
     try {
-      const result = await api.uploadStatement(uploadFile);
-      setUploadResult(result);
+      const accepted = await api.uploadStatement(uploadFile, generateEmbeddings);
+      setUploadAccepted(accepted);
+
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < 15 * 60 * 1000) {
+        const status = await api.getUploadStatus(accepted.upload_id);
+        setUploadResult(status);
+        if (status.status === "done" || status.status === "error") {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
       await Promise.all([loadDashboard(filters), loadMerchants()]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "unknown error";
@@ -287,22 +301,60 @@ function App() {
               onChange={(e) => {
                 setUploadFile(e.target.files?.[0] ?? null);
                 setUploadError("");
+                setUploadAccepted(null);
                 setUploadResult(null);
               }}
             />
+            <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={generateEmbeddings}
+                onChange={(e) => setGenerateEmbeddings(e.target.checked)}
+              />
+              Generate embeddings
+            </label>
             <Button type="submit" disabled={!uploadFile || uploading}>
               {uploading ? "Uploading..." : "Upload"}
             </Button>
           </form>
           {uploadError && <p className="mt-3 text-sm text-rose-600">Upload error: {uploadError}</p>}
+          {uploadAccepted && (
+            <p className="mt-3 text-xs text-slate-500">
+              Upload job #{uploadAccepted.upload_id} is {uploadAccepted.status}...
+            </p>
+          )}
           {uploadResult && (
-            <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+            <div className="mt-4 space-y-3 text-xs text-slate-600">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span>
+                    Progress: {uploadResult.progress_percent}% ({uploadResult.processing_phase})
+                  </span>
+                  <span>
+                    {uploadResult.rows_processed}/{Math.max(uploadResult.rows_total, uploadResult.rows_processed)}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-200">
+                  <div
+                    className="h-2 rounded-full bg-accent transition-all"
+                    style={{ width: `${uploadResult.progress_percent}%` }}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <span>Status: {uploadResult.status}</span>
               <span>Inserted: {uploadResult.rows_inserted}</span>
               <span>Duplicates: {uploadResult.rows_duplicate}</span>
               <span>Invalid: {uploadResult.rows_invalid}</span>
               <span>LLM used: {uploadResult.llm_used_count}</span>
               <span>Fallback used: {uploadResult.fallback_used_count}</span>
+              <span>Embeddings: {uploadResult.embeddings_generated}</span>
+              {uploadResult.error_message && (
+                <span className="col-span-2 text-rose-600">
+                  Error: {uploadResult.error_message}
+                </span>
+              )}
+              </div>
             </div>
           )}
         </Card>

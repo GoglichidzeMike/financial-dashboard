@@ -2,17 +2,28 @@ export type HealthResponse = {
   status: string;
 };
 
-export type UploadResponse = {
+export type UploadAcceptedResponse = {
   upload_id: number;
   filename: string;
   status: string;
+};
+
+export type UploadStatusResponse = {
+  upload_id: number;
+  filename: string;
+  status: string;
+  processing_phase: string;
+  progress_percent: number;
   rows_total: number;
+  rows_processed: number;
   rows_skipped_non_transaction: number;
   rows_invalid: number;
   rows_duplicate: number;
   rows_inserted: number;
   llm_used_count: number;
   fallback_used_count: number;
+  embeddings_generated: number;
+  error_message: string | null;
 };
 
 export type Merchant = {
