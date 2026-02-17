@@ -218,3 +218,27 @@ Frontend updates:
 - Top merchants panel
 - Currency breakdown panel
 - Reusable UI components for buttons, inputs, selects, cards
+
+## Step 6: Chat Q&A
+
+New endpoint:
+
+- `POST /chat`
+
+Request body:
+
+```json
+{
+  "question": "What were my top merchants this month?",
+  "date_from": "2026-02-01",
+  "date_to": "2026-02-29",
+  "top_k": 20
+}
+```
+
+Response:
+- `mode` (`sql`, `semantic`, or `mixed`)
+- `answer`
+- `sources` (context snippets used to answer)
+
+Frontend now includes a Chat Q&A card that calls this endpoint and displays answer + sources.

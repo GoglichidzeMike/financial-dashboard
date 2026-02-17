@@ -104,3 +104,22 @@ export type DateFilter = {
   dateFrom: string;
   dateTo: string;
 };
+
+export type ChatSource = {
+  source_type: string;
+  title: string;
+  content: string;
+};
+
+export type ChatRequest = {
+  question: string;
+  date_from?: string;
+  date_to?: string;
+  top_k?: number;
+};
+
+export type ChatResponse = {
+  mode: string;
+  answer: string;
+  sources: ChatSource[];
+};

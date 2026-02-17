@@ -1,4 +1,6 @@
 import {
+  ChatRequest,
+  ChatResponse,
   UploadAcceptedResponse,
   UploadStatusResponse,
   CategoriesResponse,
@@ -77,4 +79,10 @@ export const api = {
     ),
   currencyBreakdown: (filters: DateFilter) =>
     fetchJson<CurrencyBreakdownResponse>(`/dashboard/currency-breakdown${filterQuery(filters)}`),
+  chat: (payload: ChatRequest) =>
+    fetchJson<ChatResponse>("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
 };

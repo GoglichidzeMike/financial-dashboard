@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "./lib/api";
 import { formatGel } from "./lib/format";
 import {
+  ChatResponse,
   UploadAcceptedResponse,
   UploadStatusResponse,
   CategoriesResponse,
@@ -60,6 +61,11 @@ function App() {
   const [merchantsLoading, setMerchantsLoading] = useState(false);
   const [merchantsError, setMerchantsError] = useState("");
   const [savingMerchantId, setSavingMerchantId] = useState<number | null>(null);
+  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
+  const [chatUseDashboardFilters, setChatUseDashboardFilters] = useState(false);
 
   useEffect(() => {
     api
@@ -198,6 +204,32 @@ function App() {
       });
     } finally {
       setCheckingLlm(false);
+    }
+  };
+
+  const onAskChat = async (event: FormEvent) => {
+    event.preventDefault();
+    const question = chatQuestion.trim();
+    if (!question) {
+      return;
+    }
+
+    setChatLoading(true);
+    setChatError("");
+    setChatResponse(null);
+    try {
+      const response = await api.chat({
+        question,
+        date_from: chatUseDashboardFilters ? filters.dateFrom || undefined : undefined,
+        date_to: chatUseDashboardFilters ? filters.dateTo || undefined : undefined,
+        top_k: 20,
+      });
+      setChatResponse(response);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setChatError(message);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -416,6 +448,65 @@ function App() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </Card>
+      </section>
+
+      <section>
+        <Card
+          title="Chat Q&A"
+          subtitle="Ask questions about your finances. Uses SQL and semantic retrieval."
+        >
+          <form className="flex flex-wrap items-center gap-3" onSubmit={onAskChat}>
+            <Input
+              type="text"
+              placeholder="Example: What were my top merchants this month?"
+              className="min-w-[320px] flex-1"
+              value={chatQuestion}
+              onChange={(e) => setChatQuestion(e.target.value)}
+            />
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={chatUseDashboardFilters}
+                onChange={(e) => setChatUseDashboardFilters(e.target.checked)}
+              />
+              Use dashboard date filters
+            </label>
+            <Button type="submit" disabled={chatLoading || !chatQuestion.trim()}>
+              {chatLoading ? "Thinking..." : "Ask"}
+            </Button>
+          </form>
+          {chatError && <p className="mt-3 text-sm text-rose-600">Chat error: {chatError}</p>}
+          {chatResponse && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <StatusPill label={`mode: ${chatResponse.mode}`} tone="neutral" />
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                {chatResponse.answer}
+              </p>
+              {chatResponse.sources.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Sources
+                  </p>
+                  {chatResponse.sources.map((source, index) => (
+                    <div
+                      key={`${source.title}-${index}`}
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <p className="mb-1 text-xs font-semibold text-slate-600">
+                        {source.title} ({source.source_type})
+                      </p>
+                      <p className="whitespace-pre-wrap text-xs leading-5 text-slate-700">
+                        {source.content}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </Card>

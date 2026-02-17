@@ -1,3 +1,4 @@
+from app.schemas.chat import ChatRequest, ChatResponse, ChatSource
 from app.schemas.dashboard import (
     CurrencyBreakdownItem,
     CurrencyBreakdownResponse,
@@ -29,6 +30,9 @@ __all__ = [
     "MerchantUpdateRequest",
     "MerchantUpdateResponse",
     "CategoryListResponse",
+    "ChatRequest",
+    "ChatResponse",
+    "ChatSource",
     "DashboardSummaryResponse",
     "SpendingByCategoryItem",
     "SpendingByCategoryResponse",
