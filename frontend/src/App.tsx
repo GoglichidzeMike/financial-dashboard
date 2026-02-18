@@ -2,7 +2,12 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { api } from "./lib/api";
-import { DateFilter, LlmCheckResponse } from "./types/api";
+import {
+  ChatMessage,
+  ChatThread,
+  DateFilter,
+  LlmCheckResponse,
+} from "./types/api";
 import { Button } from "./components/ui/Button";
 import { Card } from "./components/ui/Card";
 import { StatusPill } from "./components/shared/StatusPill";
@@ -11,27 +16,26 @@ import { TopNav } from "./components/navigation/TopNav";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
-const CHAT_SESSIONS_STORAGE_KEY = "finance_dashboard_chat_sessions";
-const CHAT_ACTIVE_SESSION_STORAGE_KEY = "finance_dashboard_active_chat_session";
-
-type ChatSession = {
-  id: string;
-  title: string;
-  items: ChatHistoryItem[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-function createNewSession(): ChatSession {
-  const id = `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const now = new Date().toISOString();
-  return {
-    id,
-    title: "New Chat",
-    items: [],
-    createdAt: now,
-    updatedAt: now,
-  };
+function mapMessagesToHistory(messages: ChatMessage[]): ChatHistoryItem[] {
+  const items: ChatHistoryItem[] = [];
+  for (const message of messages) {
+    if (message.role !== "assistant" || !message.answer_text) {
+      continue;
+    }
+    items.push({
+      id: message.id,
+      question: message.question_text || "Question",
+      response: {
+        thread_id: "",
+        message_id: message.id,
+        mode: message.mode || "sql",
+        answer: message.answer_text,
+        sources: message.sources || [],
+      },
+      createdAt: new Date(message.created_at).toLocaleString(),
+    });
+  }
+  return items.reverse();
 }
 
 function App() {
@@ -49,8 +53,10 @@ function App() {
   const [chatError, setChatError] = useState("");
   const [chatUseDashboardFilters, setChatUseDashboardFilters] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([createNewSession()]);
-  const [activeChatSessionId, setActiveChatSessionId] = useState<string>("");
+
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string>("");
+  const [threadMessages, setThreadMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     api
@@ -62,40 +68,39 @@ function App() {
       });
   }, []);
 
-  useEffect(() => {
-    try {
-      const rawSessions = window.localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY);
-      const rawActive = window.localStorage.getItem(CHAT_ACTIVE_SESSION_STORAGE_KEY);
-      if (rawSessions) {
-        const parsed = JSON.parse(rawSessions) as ChatSession[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setChatSessions(parsed);
-          if (rawActive && parsed.some((session) => session.id === rawActive)) {
-            setActiveChatSessionId(rawActive);
-          } else {
-            setActiveChatSessionId(parsed[0].id);
-          }
-          return;
-        }
-      }
-    } catch {
-      // no-op, fallback below
+  const refreshThreads = async (preferredThreadId?: string) => {
+    const response = await api.listChatThreads("active");
+    let nextThreads: ChatThread[] = response.items;
+    if (nextThreads.length === 0) {
+      const created = await api.createChatThread({ title: "New Chat" });
+      nextThreads = [{ ...created, message_count: 0 }];
     }
-    const first = createNewSession();
-    setChatSessions([first]);
-    setActiveChatSessionId(first.id);
+    setThreads(nextThreads);
+    const selected =
+      (preferredThreadId && nextThreads.find((thread) => thread.id === preferredThreadId)?.id) ||
+      nextThreads[0].id;
+    setActiveThreadId(selected);
+  };
+
+  useEffect(() => {
+    refreshThreads().catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setChatError(message);
+    });
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(chatSessions));
-  }, [chatSessions]);
-
-  useEffect(() => {
-    if (!activeChatSessionId) {
+    if (!activeThreadId) {
       return;
     }
-    window.localStorage.setItem(CHAT_ACTIVE_SESSION_STORAGE_KEY, activeChatSessionId);
-  }, [activeChatSessionId]);
+    api
+      .listChatMessages(activeThreadId, 200)
+      .then((res) => setThreadMessages(res.items))
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "unknown error";
+        setChatError(message);
+      });
+  }, [activeThreadId]);
 
   const onCheckLlm = async () => {
     setCheckingLlm(true);
@@ -119,56 +124,25 @@ function App() {
   const onAskChat = async (event: FormEvent) => {
     event.preventDefault();
     const question = chatQuestion.trim();
-    if (!question) {
+    if (!question || !activeThreadId) {
       return;
     }
 
     setChatLoading(true);
     setChatError("");
     try {
-      const activeSession = chatSessions.find((session) => session.id === activeChatSessionId);
-      const historyForApi = (activeSession?.items ?? [])
-        .slice(0, 10)
-        .reverse()
-        .map((item) => ({
-          question: item.question,
-          answer: item.response.answer,
-        }));
-      const response = await api.chat({
+      await api.chat({
+        thread_id: activeThreadId,
         question,
         date_from: chatUseDashboardFilters ? dashboardFilters.dateFrom || undefined : undefined,
         date_to: chatUseDashboardFilters ? dashboardFilters.dateTo || undefined : undefined,
         top_k: 20,
-        history: historyForApi,
       });
-      setChatSessions((prev) =>
-        prev.map((session) => {
-          if (session.id !== activeChatSessionId) {
-            return session;
-          }
-          const createdAt = new Date().toLocaleString();
-          const nextItems = [
-            {
-              id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-              question,
-              response,
-              createdAt,
-            },
-            ...session.items,
-          ].slice(0, 80);
-          const nextTitle =
-            session.items.length === 0
-              ? question.slice(0, 42) + (question.length > 42 ? "..." : "")
-              : session.title;
-          return {
-            ...session,
-            title: nextTitle || "Chat",
-            items: nextItems,
-            updatedAt: new Date().toISOString(),
-          };
-        })
-      );
       setChatQuestion("");
+      await Promise.all([
+        refreshThreads(activeThreadId),
+        api.listChatMessages(activeThreadId, 200).then((res) => setThreadMessages(res.items)),
+      ]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "unknown error";
       setChatError(message);
@@ -177,36 +151,46 @@ function App() {
     }
   };
 
-  const onClearChatHistory = () => {
-    setChatSessions((prev) =>
-      prev.map((session) =>
-        session.id === activeChatSessionId
-          ? { ...session, items: [], title: "New Chat", updatedAt: new Date().toISOString() }
-          : session
-      )
-    );
-    setChatError("");
+  const onCreateChatSession = async () => {
+    try {
+      const thread = await api.createChatThread({ title: "New Chat" });
+      await refreshThreads(thread.id);
+      setThreadMessages([]);
+      setChatQuestion("");
+      setChatError("");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setChatError(message);
+    }
   };
 
-  const onCreateChatSession = () => {
-    const session = createNewSession();
-    setChatSessions((prev) => [session, ...prev]);
-    setActiveChatSessionId(session.id);
-    setChatQuestion("");
-    setChatError("");
+  const onClearChatHistory = async () => {
+    if (!activeThreadId) {
+      return;
+    }
+    try {
+      await api.deleteChatThread(activeThreadId);
+      await refreshThreads();
+      setThreadMessages([]);
+      setChatError("");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setChatError(message);
+    }
   };
 
-  const activeChatSession =
-    chatSessions.find((session) => session.id === activeChatSessionId) ?? chatSessions[0];
-  const chatHistory = activeChatSession?.items ?? [];
-  const chatSessionsMeta = chatSessions
-    .map((session) => ({
-      id: session.id,
-      title: session.title,
-      updatedAt: session.updatedAt,
-      messageCount: session.items.length,
-    }))
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  const chatHistory = useMemo(() => mapMessagesToHistory(threadMessages), [threadMessages]);
+
+  const chatSessionsMeta = useMemo(
+    () =>
+      threads.map((thread) => ({
+        id: thread.id,
+        title: thread.title,
+        updatedAt: thread.updated_at,
+        messageCount: thread.message_count,
+      })),
+    [threads]
+  );
 
   const llmTone = useMemo(() => {
     if (!llmCheck) {
@@ -221,9 +205,7 @@ function App() {
         <Card className="border border-cyan-100 bg-gradient-to-r from-white to-cyan-50">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                Finance Dashboard
-              </h1>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
               <p className="mt-2 text-sm text-slate-600">
                 Health: <span className="font-semibold">{health}</span> | API: {api.baseUrl}
               </p>
@@ -267,14 +249,14 @@ function App() {
         useDashboardFilters={chatUseDashboardFilters}
         history={chatHistory}
         sessions={chatSessionsMeta}
-        activeSessionId={activeChatSession?.id ?? ""}
+        activeSessionId={activeThreadId}
         onToggle={() => setChatOpen((prev) => !prev)}
         onQuestionChange={setChatQuestion}
         onToggleFilters={setChatUseDashboardFilters}
         onSubmit={onAskChat}
         onClearHistory={onClearChatHistory}
         onCreateSession={onCreateChatSession}
-        onSelectSession={setActiveChatSessionId}
+        onSelectSession={setActiveThreadId}
       />
     </>
   );

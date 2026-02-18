@@ -1,5 +1,10 @@
 import {
   CategoryMerchantBreakdownResponse,
+  ChatMessageListResponse,
+  ChatThreadCreateRequest,
+  ChatThreadListResponse,
+  ChatThreadResponse,
+  ChatThreadUpdateRequest,
   ChatRequest,
   ChatResponse,
   TransactionListResponse,
@@ -111,6 +116,31 @@ export const api = {
           ])
         )
       )}`
+    ),
+  deleteTransaction: (transactionId: number) =>
+    fetchJson<{ status: string }>(`/transactions/${transactionId}`, { method: "DELETE" }),
+  listChatThreads: (status?: "active" | "archived") =>
+    fetchJson<ChatThreadListResponse>(`/chat/threads${buildQuery({ status })}`),
+  createChatThread: (payload: ChatThreadCreateRequest) =>
+    fetchJson<ChatThreadResponse>("/chat/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  updateChatThread: (threadId: string, payload: ChatThreadUpdateRequest) =>
+    fetchJson<ChatThreadResponse>(`/chat/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  deleteChatThread: (threadId: string) =>
+    fetchJson<{ status: string }>(`/chat/threads/${threadId}`, { method: "DELETE" }),
+  listChatMessages: (threadId: string, limit = 100, before?: string) =>
+    fetchJson<ChatMessageListResponse>(
+      `/chat/threads/${threadId}/messages${buildQuery({
+        limit: String(limit),
+        before,
+      })}`
     ),
   chat: (payload: ChatRequest) =>
     fetchJson<ChatResponse>("/chat", {

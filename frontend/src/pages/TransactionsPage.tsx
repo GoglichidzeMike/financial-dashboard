@@ -96,6 +96,7 @@ export function TransactionsPage() {
   const [data, setData] = useState<TransactionListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     api
@@ -200,6 +201,25 @@ export function TransactionsPage() {
   const pageSize = query.limit;
   const offset = query.offset;
   const currentPage = Math.floor(offset / pageSize) + 1;
+
+  const onDeleteTransaction = async (transactionId: number) => {
+    const confirmed = window.confirm("Delete this transaction permanently?");
+    if (!confirmed) {
+      return;
+    }
+    setDeletingId(transactionId);
+    setError("");
+    try {
+      await api.deleteTransaction(transactionId);
+      const refreshed = await api.listTransactions(query);
+      setData(refreshed);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      setError(message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <main className="space-y-6">
@@ -374,6 +394,7 @@ export function TransactionsPage() {
                     </th>
                     <th className="px-2 py-2 text-right">Card</th>
                     <th className="px-2 py-2 text-right">MCC</th>
+                    <th className="px-2 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -403,6 +424,17 @@ export function TransactionsPage() {
                       </td>
                       <td className="border-t border-slate-100 px-2 py-2 text-right">
                         {row.mcc_code ?? "-"}
+                      </td>
+                      <td className="border-t border-slate-100 px-2 py-2 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          disabled={deletingId === row.id}
+                          onClick={() => onDeleteTransaction(row.id)}
+                        >
+                          {deletingId === row.id ? "Deleting..." : "Delete"}
+                        </Button>
                       </td>
                     </tr>
                   ))}

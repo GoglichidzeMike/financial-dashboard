@@ -1,7 +1,7 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import Select, String, asc, cast, desc, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import Select, String, asc, cast, delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Literal
 
@@ -170,3 +170,16 @@ async def list_transactions(
             has_next=(offset + limit) < total,
         ),
     )
+
+
+@router.delete("/{transaction_id}")
+async def delete_transaction(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    stmt = delete(Transaction).where(Transaction.id == transaction_id)
+    result = await db.execute(stmt)
+    if (result.rowcount or 0) == 0:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    await db.commit()
+    return {"status": "deleted"}

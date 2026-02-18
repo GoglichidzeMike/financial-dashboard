@@ -83,7 +83,7 @@ export function ChatDrawer({
                   Chat Assistant
                 </h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Ask anytime. History is saved locally in this browser.
+                  Ask anytime. History is persisted on server.
                 </p>
               </div>
               <div className="flex items-center gap-2">

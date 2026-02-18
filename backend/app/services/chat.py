@@ -923,7 +923,7 @@ async def answer_chat(
     date_to: date | None,
     top_k: int,
     history: list[ChatHistoryTurn] | None = None,
-) -> ChatResponse:
+) -> tuple[str, str, list[ChatSource]]:
     history = history or []
     merged_question = _merge_question_with_history(question, history)
     effective_date_from, effective_date_to = _infer_date_range_from_question(
@@ -1054,14 +1054,10 @@ async def answer_chat(
             pass
 
     if plan.intent != "transactions_search":
-        return ChatResponse(
-            mode=mode,
-            answer=override_answer or _fallback_answer(question, sources),
-            sources=sources,
-        )
+        return mode, (override_answer or _fallback_answer(question, sources)), sources
 
     if not _llm_available():
-        return ChatResponse(mode=mode, answer=_fallback_answer(question, sources), sources=sources)
+        return mode, _fallback_answer(question, sources), sources
 
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     context_payload = [{"source_type": s.source_type, "title": s.title, "content": s.content} for s in sources]
@@ -1090,4 +1086,4 @@ async def answer_chat(
         answer = (response.choices[0].message.content or "").strip() or _fallback_answer(question, sources)
     except Exception:
         answer = _fallback_answer(question, sources)
-    return ChatResponse(mode=mode, answer=answer, sources=sources)
+    return mode, answer, sources

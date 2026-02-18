@@ -1,4 +1,15 @@
-from app.schemas.chat import ChatRequest, ChatResponse, ChatSource
+from app.schemas.chat import (
+    ChatMessageItem,
+    ChatMessageListResponse,
+    ChatRequest,
+    ChatResponse,
+    ChatSource,
+    ChatThreadCreateRequest,
+    ChatThreadListItem,
+    ChatThreadListResponse,
+    ChatThreadResponse,
+    ChatThreadUpdateRequest,
+)
 from app.schemas.dashboard import (
     CategoryMerchantBreakdownItem,
     CategoryMerchantBreakdownResponse,
@@ -40,6 +51,13 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "ChatSource",
+    "ChatThreadListItem",
+    "ChatThreadListResponse",
+    "ChatThreadCreateRequest",
+    "ChatThreadUpdateRequest",
+    "ChatThreadResponse",
+    "ChatMessageItem",
+    "ChatMessageListResponse",
     "DashboardSummaryResponse",
     "SpendingByCategoryItem",
     "SpendingByCategoryResponse",

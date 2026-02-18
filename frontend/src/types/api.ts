@@ -184,20 +184,61 @@ export type ChatSource = {
 };
 
 export type ChatRequest = {
+  thread_id: string;
   question: string;
   date_from?: string;
   date_to?: string;
   top_k?: number;
-  history?: ChatHistoryTurn[];
-};
-
-export type ChatHistoryTurn = {
-  question: string;
-  answer: string;
 };
 
 export type ChatResponse = {
+  thread_id: string;
+  message_id: string;
   mode: string;
   answer: string;
   sources: ChatSource[];
+};
+
+export type ChatThread = {
+  id: string;
+  title: string;
+  status: string;
+  message_count: number;
+  updated_at: string;
+  last_message_at: string | null;
+};
+
+export type ChatThreadListResponse = {
+  items: ChatThread[];
+};
+
+export type ChatThreadCreateRequest = {
+  title?: string;
+};
+
+export type ChatThreadUpdateRequest = {
+  title?: string;
+  status?: "active" | "archived";
+};
+
+export type ChatThreadResponse = {
+  id: string;
+  title: string;
+  status: string;
+  updated_at: string;
+  last_message_at: string | null;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  question_text?: string | null;
+  answer_text?: string | null;
+  mode?: string | null;
+  sources?: ChatSource[] | null;
+  created_at: string;
+};
+
+export type ChatMessageListResponse = {
+  items: ChatMessage[];
 };
